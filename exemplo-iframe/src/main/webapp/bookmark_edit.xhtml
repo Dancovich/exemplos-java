@@ -1,0 +1,153 @@
+<ui:composition xmlns="http://www.w3.org/1999/xhtml" xmlns:f="http://java.sun.com/jsf/core"
+	xmlns:p="http://primefaces.org/ui" xmlns:h="http://java.sun.com/jsf/html"
+	xmlns:ui="http://java.sun.com/jsf/facelets" template="/template/main.xhtml">
+	
+	<ui:define name="body">
+		<h:form prependId="false">
+			<p:toolbar>
+				<p:toolbarGroup align="left">
+					<p:commandButton value="#{messages['button.save']}" action="#{bookmarkEditMB.insert}"
+						rendered="#{!bookmarkEditMB.updateMode}" ajax="false" />
+					<p:commandButton value="#{messages['button.save']}" action="#{bookmarkEditMB.update}"
+						rendered="#{bookmarkEditMB.updateMode}" ajax="false" />
+					<p:commandButton value="#{messages['button.delete']}" onclick="confirmation.show()"
+						rendered="#{bookmarkEditMB.updateMode}" type="button" immediate="true" ajax="false" />
+					<p:confirmDialog message="#{messages['label.confirm.delete']}" showEffect="bounce" hideEffect="explode"
+						header="#{messages['label.dialog.delete']}" severity="alert" widgetVar="confirmation">
+						<h:commandButton value="#{messages['button.dialog.yes']}" action="#{bookmarkEditMB.delete}" immediate="true"
+							ajax="false" />
+						<h:commandButton value="#{messages['button.dialog.no']}" onclick="confirmation.hide()" type="button" />
+					</p:confirmDialog>
+				</p:toolbarGroup>
+			</p:toolbar>
+
+			<br />
+
+			<p:fieldset legend="#{messages['bookmark.label']}" toggleable="true" toggleSpeed="500">
+				<p:panel>
+				
+					<!-- 
+					Esse painel meramente mostra um tempo de 100 a 0. É só para demonstrar que a sessão foi renovada.
+					 -->
+					<p:panel id="progressBarClient">
+						<div id="timeLabel">20</div>
+					</p:panel>
+
+					<!--
+					Esse remote command faz uma chamada AJAX a um método em um ManagedBean. A mera chamada já renova a sessão, mas é possível
+					usar esse método para realizar alguma ação. 
+					 -->
+					<p:remoteCommand action="#{sessionRefreshMB.refreshSession}" name="refreshSession" update="progressBarClient"/>
+
+					<!--
+					Esse é o IFRAME. Por questão de segurança do JavaScript, a página aberta dentro do IFRAME tem que pertencer ao mesmo domínio.
+					Por exemplo: se a página externa estiver em "server1.domain.com.br/sistema/pag1.jsf", o IFRAME tem que estar contido em
+					qualquer site cujo domínio seja "domain.com.br", por exemplo "server2.domain.com.br/bi/report.jsf".  
+					 -->
+					<f:subview id="list_iframe">
+						<!--
+						É necessário anexar um evento "ONLOAD" no IFRAME, dessa forma o método que escuta eventos dentro
+						do IFRAME só começará a atuar quando o IFRAME carregar a página interna completamente.
+						Nesse momento, o nosso método "attachEvent()" será chamado, anexando um evento à página interna do IFRAME
+						que vai nos comunicar toda vez que o usuário clicar ou digitar dentro do IFRAME.
+						Esse tipo de anexo de evento num IFRAME é protegido no JavaScript, por isso o domínio precisa ser o mesmo. Se
+						a mesma técnica for usada em um site fora do domínio dessa página, o JavaScript vai acusar erro.
+						 -->
+						<iframe id="bookmark_iframe" src="bookmark_list.jsf" width="1000px" height="600px" onload="attachEvent(this);">
+						</iframe>
+					</f:subview>
+				</p:panel>
+			
+				<h:panelGrid id="fields" columns="3">
+					<h:outputLabel value="#{messages['bookmark.label.id']}: " for="id" styleClass="text-input" />
+					<h:outputText id="id" value="#{bookmarkEditMB.bean.id}" />
+					<p:message for="id" />
+
+					<h:outputLabel value="#{messages['bookmark.label.description']}: " for="description" styleClass="text-input" />
+					<h:inputText id="description" value="#{bookmarkEditMB.bean.description}"
+						title="#{messages['bookmark.alt.description']}" />
+					<p:message for="description" />
+
+					<h:outputLabel value="#{messages['bookmark.label.link']}: " for="link" styleClass="text-input" />
+					<h:inputText id="link" value="#{bookmarkEditMB.bean.link}" title="#{messages['bookmark.alt.link']}" />
+					<p:message for="link" />
+				</h:panelGrid>
+			</p:fieldset>
+		</h:form>
+		
+		<script type="text/javascript">
+			//<![CDATA[
+			function callRefreshSession(){
+
+				//Marca que precisaremos reativar a sessão. A reativação só será feita em um momento posterior, para evitar
+				//sobrecarga do servidor
+				precisaReativar = true;
+			}
+		
+			/**
+			Esse é o método chamado pelo evento ONLOAD no IFRAME. Ele usa jQuery para anexar ao BODY da página
+			interna no IFRAME um listener que escuta aos eventos ONCLICK e ONKEYDOWN. Assim sempre que o usuário clicar
+			ou digitar dentro do IFRAME, a página externa será notificada e poderá renovar a sessão.
+
+			Após renovar a sessão, a DIV de ID "timeLabel" é reiniciada com o valor 100, então é possível perceber
+			a renovação da sessão funcionando.
+			*/
+			function attachEvent(caller){
+
+				//Comando jQuery para acessar o BODY contido no IFRAME e anexar listeners aos eventos.
+				$("#bookmark_iframe").contents().find("body").on('click keydown', callRefreshSession);
+
+				/*
+				Se o sistema não usa jQuery, pode-se usar a técnica abaixo, ela alcança o mesmo resultado mas pode não funcionar em todos os browsers.
+				O recomendado é usar jQuery, que cuida de todos os problemas de compatibilidade e disponibiliza uma API única.*/
+
+				/*
+				var iframeBody = caller.contentWindow.document.body;
+				if (iframeBody.addEventListener){
+					iframeBody.addEventListener("click" , callRefreshSession, false);
+					iframeBody.addEventListener("keydown" , callRefreshSession, false);
+				}
+				*/
+				
+			}
+
+			/**
+			Essa função é chamada todo segundo para contar o tempo da sessão. A cada segundo
+			obtemos o conteúdo da DIV de ID "timeLabel" (definido mais acima na página)
+			e reduzimos em 1 esse tempo. Aqui está definido "100", mas o correto é definir algo
+			próximo do tempo de sessão da página.
+			*/
+			function updateTimer(){
+				var time = parseInt($("#timeLabel").text());
+
+				if (time>0){
+					time--;
+				}
+
+				//Se o temporizador está a 10 segundos de encerrar a sessão, testamos se ela deve ser reativada.
+				if (time <= 10 && precisaReativar){
+					precisaReativar = false;
+
+					//Esse método é definido pela tag p:remoteCommand, ele faz a chamada AJAX definida por essa tag.
+					refreshSession();
+				}
+	
+				$("#timeLabel").text(time);
+			}
+			setInterval('updateTimer()', 1000 );
+
+			/*
+			Essa variável é definida como TRUE toda vez que o usuário clicar ou digitar no IFRAME.
+			Assim poupamos requisições, pois só precisamos checar essa variável após um tempo e reativar
+			a sessão se ela for TRUE.
+
+			Se não fizermos dessa forma, todo clique ou digitação do usuário causará um request AJAX, o
+			que pode ser penoso para o servidor. 
+			*/
+			var precisaReativar = false;
+
+			//]]>
+		</script>
+		
+	</ui:define>
+</ui:composition>
